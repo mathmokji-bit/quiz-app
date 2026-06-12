@@ -7,86 +7,68 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
-const rooms = {}; 
-// 테스트를 위한 임시 문제 묶음
-const defaultQuestions = [
-  "기로 끝나는 말은?", 
-  "우리 반에서 가장 키가 큰 사람은?", 
-  "오늘 점심에 먹고 싶은 메뉴는?"
-];
+let gameRoom = null; // 이제 방은 딱 하나만 존재합니다.
 
 io.on('connection', (socket) => {
   
-// 수정된 방 생성 로직
+  // 1. 호스트가 방을 만들 때
   socket.on('createGame', (config) => {
-    // 4자리 무작위 영어/숫자 코드 생성
-    const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-    
-    // 출제자가 넘겨준 설정(문제, 모둠 수)을 방 정보에 함께 저장합니다.
-    rooms[roomCode] = { 
+    gameRoom = { 
       hostId: socket.id, 
       players: [],
-      questions: config.questions, // 전달받은 문제 배열
-      maxTeams: config.teams,      // 전달받은 모둠 수
+      questions: config.questions, 
+      maxTeams: config.teams,      
       currentState: 'LOBBY',
       currentQIndex: -1      
     };
     
-    socket.join(roomCode);
-    socket.emit('gameCreated', roomCode);
-    console.log(`새로운 방 생성됨: ${roomCode} / 문제 수: ${config.questions.length}개`);
+    socket.join('MAIN_ROOM');
+    socket.emit('gameCreated'); // 코드 번호를 보낼 필요가 없음
+    console.log(`게임이 설정되었습니다. 문제 수: ${config.questions.length}개`);
   });
 
+  // 2. 참가자가 접속할 때
   socket.on('joinGame', (data) => {
-    const { code, team, name } = data;
-    const room = rooms[code];
-    if (room) {
-      socket.join(code);
-      // 참가자 정보에 'answer' 빈칸 추가
-      room.players.push({ id: socket.id, team, name, answer: "" }); 
+    const { team, name } = data;
+    if (gameRoom) {
+      socket.join('MAIN_ROOM');
+      gameRoom.players.push({ id: socket.id, team, name, answer: "" }); 
       socket.emit('joinSuccess');
-      io.to(room.hostId).emit('playerJoined', `${team}조 ${name}`);
+      io.to(gameRoom.hostId).emit('playerJoined', `${team}조 ${name}`);
     }
   });
 
-  // 호스트가 '다음 단계로 진행' 버튼을 누를 때마다 실행됨
-  socket.on('nextState', (code) => {
-    const room = rooms[code];
-    if (!room) return;
+  // 3. 호스트가 다음 단계로 넘길 때
+  socket.on('nextState', () => {
+    if (!gameRoom) return;
 
-    if (room.currentState === 'LOBBY' || room.currentState === 'RESULT') {
-      room.currentState = 'Q_NUM'; // "1번 문제" 화면으로
-      room.currentQIndex++;        // 문제 번호 1 증가
+    if (gameRoom.currentState === 'LOBBY' || gameRoom.currentState === 'RESULT') {
+      gameRoom.currentState = 'Q_NUM'; 
+      gameRoom.currentQIndex++;        
+      gameRoom.players.forEach(p => p.answer = ""); 
       
-      // 새 문제가 시작될 때 모든 참가자의 이전 답안 초기화
-      room.players.forEach(p => p.answer = ""); 
-      
-    } else if (room.currentState === 'Q_NUM') {
-      room.currentState = 'Q_TEXT'; // "기로 끝나는 말은?" 화면으로 (입력 시작)
-    } else if (room.currentState === 'Q_TEXT') {
-      room.currentState = 'RESULT'; // 정답 확인 화면으로
+    } else if (gameRoom.currentState === 'Q_NUM') {
+      gameRoom.currentState = 'Q_TEXT'; 
+    } else if (gameRoom.currentState === 'Q_TEXT') {
+      gameRoom.currentState = 'RESULT'; 
     }
 
-    // 변경된 상태를 호스트와 참가자에게 각각 다르게 전송
-    io.to(room.hostId).emit('updateHostScreen', {
-      state: room.currentState,
-      qIndex: room.currentQIndex,
-      questionText: room.questions[room.currentQIndex],
-      players: room.players
+    io.to(gameRoom.hostId).emit('updateHostScreen', {
+      state: gameRoom.currentState,
+      qIndex: gameRoom.currentQIndex,
+      questionText: gameRoom.questions[gameRoom.currentQIndex],
+      players: gameRoom.players
     });
 
-    io.to(code).emit('updatePlayerScreen', {
-      state: room.currentState
+    io.to('MAIN_ROOM').emit('updatePlayerScreen', {
+      state: gameRoom.currentState
     });
   });
 
-  // 참가자가 답을 제출했을 때
-  socket.on('submitAnswer', (data) => {
-    const { code, answer } = data;
-    const room = rooms[code];
-    if (room) {
-      // 내 socket.id와 일치하는 플레이어를 찾아 답을 저장
-      const player = room.players.find(p => p.id === socket.id);
+  // 4. 참가자가 답안을 제출할 때
+  socket.on('submitAnswer', (answer) => {
+    if (gameRoom) {
+      const player = gameRoom.players.find(p => p.id === socket.id);
       if (player) {
         player.answer = answer;
       }
@@ -94,6 +76,7 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(3000, () => {
+const port = process.env.PORT || 3000;
+server.listen(port, () => {
   console.log('게임 서버가 가동되었습니다.');
 });
