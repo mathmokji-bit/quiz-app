@@ -10,16 +10,26 @@
         input, textarea { padding: 10px; font-size: 16px; margin: 5px; }
         .hidden { display: none !important; }
         #host-display-text { font-size: 3em; margin: 40px 0; }
-        .team-box { border: 2px solid #ccc; margin: 10px; padding: 10px; display: inline-block; vertical-align: top; width: 200px; }
-        .answer-tag { display: block; margin: 5px; padding: 5px; border-radius: 5px; color: black; font-weight: bold; }
+        
+        /* 2x2 그리드용 디자인 추가 */
+        .team-box { border: 2px solid #333; margin: 10px; padding: 10px; display: inline-block; vertical-align: top; width: 220px; border-radius: 10px; background-color: #fff; }
+        .team-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px; }
+        .slot { width: 100%; height: 60px; border: 1px dashed #aaa; border-radius: 5px; display: flex; align-items: center; justify-content: center; background-color: #f9f9f9; flex-direction: column; box-sizing: border-box; padding: 5px; }
+        
+        /* 대기실 참가자 이름 태그 (드래그 가능) */
+        .player-badge { width: 90%; height: 80%; background-color: #2196F3; color: white; display: flex; align-items: center; justify-content: center; border-radius: 4px; cursor: grab; font-weight: bold; font-size: 14px; }
+        .player-badge:active { cursor: grabbing; }
+        
+        /* 정답 텍스트 크기 조정 */
+        .ans-name { font-size: 11px; color: #555; margin-bottom: 3px; }
+        .ans-text { font-size: 14px; font-weight: bold; word-break: keep-all; }
     </style>
 </head>
 <body>
     <h1>🎯 실시간 단답형 퀴즈 게임</h1>
 
     <div id="intro-screen">
-        <button onclick="showScreen('host-screen')">👨‍🏫 출제자로 게임 열기</button>
-        <button onclick="showScreen('player-screen')">🙋‍♂️ 참가자로 접속하기</button>
+        <button onclick="showScreen('host-screen')" style="font-size: 20px; padding: 15px 30px;">👨‍🏫 출제자로 게임 열기</button>
     </div>
 
     <div id="host-screen" class="hidden">
@@ -33,12 +43,12 @@
             <button onclick="createCustomGame()" style="background-color: #2196F3;">설정 완료 및 방 열기</button>
         </div>
 
-        <button id="next-btn" onclick="nextState()" class="hidden" style="background-color: #ff9800; padding: 15px 30px; font-weight: bold;">게임 시작 / 다음 화면 ➡️</button>
+        <button id="next-btn" onclick="nextState()" class="hidden" style="background-color: #ff9800; padding: 15px 30px; font-weight: bold; font-size: 18px;">게임 시작 / 다음 화면 ➡️</button>
 
         <div id="host-lobby" class="hidden">
             <div id="qr-code-display" style="margin: 20px 0;"></div>
-            <p>참가자 대기 명단:</p>
-            <ul id="player-list"></ul>
+            <h3>👥 참가자 대기 명단 (이름을 드래그해서 자리를 바꿀 수 있습니다)</h3>
+            <div id="lobby-grid-container"></div>
         </div>
         
         <div id="host-game-view" class="hidden">
@@ -69,8 +79,8 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+        let totalTeamsConfig = 4; // 호스트가 설정한 모둠 수 저장용
 
-        // [핵심 로직] 접속 주소에 '?role=player'가 있으면 무조건 첫 화면 건너뛰고 참가자 창 띄우기
         window.onload = () => {
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('role') === 'player') {
@@ -85,45 +95,104 @@
 
         /* --- 출제자용 함수 --- */
         function createCustomGame() {
-            const teams = document.getElementById('setup-teams').value;
+            totalTeamsConfig = document.getElementById('setup-teams').value;
             const text = document.getElementById('setup-questions').value;
             const questions = text.split('\n').map(q => q.trim()).filter(q => q.length > 0);
             
             if (questions.length === 0) return alert("문제를 최소 1개 이상 입력해주세요!");
-            if (questions.length > 30) return alert("문제는 최대 30개까지만 출제할 수 있습니다.");
-
-            socket.emit('createGame', { teams, questions });
+            socket.emit('createGame', { teams: totalTeamsConfig, questions });
             
             document.getElementById('host-setup').classList.add('hidden');
             document.getElementById('host-lobby').classList.remove('hidden');
+            renderLobbyGrid([]); // 빈 2x2 그리드 먼저 그리기
         }
 
-        function nextState() {
-            socket.emit('nextState');
-        }
+        function nextState() { socket.emit('nextState'); }
 
-        socket.on('gameCreated', () => {
+        socket.on('gameCreated', (teams) => {
+            totalTeamsConfig = teams;
             document.getElementById('next-btn').classList.remove('hidden');
             
-            // 현재 주소를 바탕으로 학생용 자동 접속 주소 생성
             const playerUrl = window.location.origin + "?role=player";
-            
-            // 무료 QR 생성 API를 통해 이미지 태그 만들기
-            const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(playerUrl)}`;
+            const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(playerUrl)}`;
             
             document.getElementById('qr-code-display').innerHTML = `
-                <h3 style="color: blue;">스마트폰 카메라로 아래 QR 코드를 찍어주세요!</h3>
                 <img src="${qrApiUrl}" alt="참가자 접속용 QR코드" style="border: 2px solid #4CAF50; padding: 10px; border-radius: 10px;">
-                <p>혹은 직접 주소 입력: <strong>${playerUrl}</strong></p>
+                <p style="font-size: 14px; color: #666;">수동 접속 주소: <strong>${playerUrl}</strong></p>
             `;
         });
 
-        socket.on('playerJoined', (name) => {
-            const list = document.getElementById('player-list');
-            const li = document.createElement('li');
-            li.innerText = name + ' 님이 입장했습니다.';
-            list.appendChild(li);
+        // 대기실에서 누군가 접속하거나 자리를 바꾸면 전체 그리드를 새로 그립니다.
+        socket.on('updateLobby', (players) => {
+            renderLobbyGrid(players);
         });
+
+        // 2x2 대기실 그리드 그리기 및 드래그 앤 드롭 설정
+        function renderLobbyGrid(players) {
+            const container = document.getElementById('lobby-grid-container');
+            container.innerHTML = "";
+
+            for (let i = 1; i <= totalTeamsConfig; i++) {
+                const teamDiv = document.createElement('div');
+                teamDiv.className = 'team-box';
+                teamDiv.innerHTML = `<h3>${i}조</h3>`;
+                
+                const grid = document.createElement('div');
+                grid.className = 'team-grid';
+
+                for (let s = 0; s < 4; s++) {
+                    const slotDiv = document.createElement('div');
+                    slotDiv.className = 'slot';
+                    slotDiv.dataset.team = i;
+                    slotDiv.dataset.slot = s;
+                    
+                    // 드롭 허용 이벤트
+                    slotDiv.ondragover = (e) => e.preventDefault();
+                    slotDiv.ondrop = handleDrop;
+
+                    const p = players.find(p => p.team == i && p.slot == s);
+                    if (p) {
+                        const badge = document.createElement('div');
+                        badge.className = 'player-badge';
+                        badge.draggable = true; // 드래그 가능
+                        badge.innerText = p.name;
+                        // 드래그 시작 시 플레이어 ID와 소속 조 기억
+                        badge.ondragstart = (e) => {
+                            e.dataTransfer.setData('playerId', p.id);
+                            e.dataTransfer.setData('team', p.team);
+                        };
+                        slotDiv.appendChild(badge);
+                    } else {
+                        slotDiv.innerHTML = `<span style="color:#ccc; font-size:12px;">빈 자리</span>`;
+                    }
+                    grid.appendChild(slotDiv);
+                }
+                teamDiv.appendChild(grid);
+                container.appendChild(teamDiv);
+            }
+        }
+
+        // 드롭 이벤트 처리 함수
+        function handleDrop(e) {
+            e.preventDefault();
+            const playerId = e.dataTransfer.getData('playerId');
+            const fromTeam = e.dataTransfer.getData('team');
+            
+            // 드롭된 위치의 slot 요소 찾기
+            const targetSlotDiv = e.target.closest('.slot');
+            if (!targetSlotDiv) return;
+
+            const targetTeam = targetSlotDiv.dataset.team;
+            const targetSlot = targetSlotDiv.dataset.slot;
+
+            if (fromTeam !== targetTeam) {
+                alert("같은 조 안에서만 자리를 이동할 수 있습니다.");
+                return;
+            }
+
+            // 서버에 자리 변경 요청
+            socket.emit('changePlayerSlot', { playerId, newSlot: parseInt(targetSlot) });
+        }
 
         socket.on('updateHostScreen', (data) => {
             document.getElementById('host-lobby').classList.add('hidden');
@@ -139,11 +208,13 @@
                 displayText.innerText = data.questionText;
             } else if (data.state === 'RESULT') {
                 displayText.innerText = "정답 확인!";
-                renderResults(data.players, resultsView);
+                // 정답 화면도 대기실과 똑같은 2x2 레이아웃으로 그립니다.
+                renderResults(data.players, resultsView, data.maxTeams);
             }
         });
 
-        function renderResults(players, container) {
+        // 2x2 정답 확인 그리드 그리기 (색상 포함)
+        function renderResults(players, container, maxTeams) {
             const colors = ['#FFD1DC', '#FFB347', '#AEC6CF', '#77DD77', '#E6E6FA'];
             const answerCounts = {}; 
             const answerColorMap = {}; 
@@ -161,21 +232,38 @@
                 }
             }
 
-            for (let i = 1; i <= 10; i++) { // 모둠 여유있게 최대 10조까지 렌더링
-                const teamPlayers = players.filter(p => p.team == i);
-                if (teamPlayers.length > 0) {
-                    const teamDiv = document.createElement('div');
-                    teamDiv.className = 'team-box';
-                    teamDiv.innerHTML = `<h3>${i}조</h3>`;
-                    
-                    teamPlayers.forEach(p => {
+            // 대기실과 동일하게 설정된 모둠 수만큼만 루프를 돕니다.
+            for (let i = 1; i <= maxTeams; i++) {
+                const teamDiv = document.createElement('div');
+                teamDiv.className = 'team-box';
+                teamDiv.innerHTML = `<h3>${i}조</h3>`;
+                
+                const grid = document.createElement('div');
+                grid.className = 'team-grid';
+
+                for (let s = 0; s < 4; s++) {
+                    const slotDiv = document.createElement('div');
+                    slotDiv.className = 'slot';
+
+                    const p = players.find(p => p.team == i && p.slot == s);
+                    if (p) {
                         const ans = (p.answer || "").trim();
                         const bgColor = answerColorMap[ans] || 'transparent';
                         const borderStyle = bgColor === 'transparent' ? 'border: 1px solid #ccc;' : 'border: 1px solid transparent;';
-                        teamDiv.innerHTML += `<span class="answer-tag" style="background-color: ${bgColor}; ${borderStyle}">${p.name}: ${ans || '미제출'}</span>`;
-                    });
-                    container.appendChild(teamDiv);
+                        
+                        slotDiv.style.backgroundColor = bgColor;
+                        slotDiv.style.cssText += borderStyle;
+                        slotDiv.innerHTML = `
+                            <div class="ans-name">${p.name}</div>
+                            <div class="ans-text">${ans || '미제출'}</div>
+                        `;
+                    } else {
+                        slotDiv.innerHTML = `<span style="color:#eee; font-size:12px;">공석</span>`;
+                    }
+                    grid.appendChild(slotDiv);
                 }
+                teamDiv.appendChild(grid);
+                container.appendChild(teamDiv);
             }
         }
 
@@ -187,6 +275,8 @@
             
             socket.emit('joinGame', { team, name });
         }
+
+        socket.on('joinError', (msg) => { alert(msg); });
 
         function submitAnswer() {
             const answer = document.getElementById('player-answer').value;
