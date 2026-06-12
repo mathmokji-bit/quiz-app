@@ -21,7 +21,6 @@
         .ans-name { font-size: 11px; color: #333; margin-bottom: 3px; font-weight: bold; width: 100%; display: flex; justify-content: space-between; align-items: center; }
         .ans-text { font-size: 14px; font-weight: bold; word-break: keep-all; }
 
-        /* [신규] 점수 조작용 귀여운 미니 버튼 */
         .score-btn { width: 18px; height: 18px; padding: 0; margin: 0 1px; font-size: 12px; font-weight: bold; background-color: #607D8B; color: white; border: none; border-radius: 3px; line-height: 18px; }
         .score-btn:hover { background-color: #FF9800; }
         .team-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; background-color: #f1f1f1; padding: 5px 10px; border-radius: 5px;}
@@ -97,6 +96,26 @@
         const socket = io();
         let totalTeamsConfig = 4; 
         let countdownInterval = null; 
+
+        // [신규] BGM 관련 변수 및 함수
+        // 깃허브 public 폴더에 올린 mp3 파일 이름을 이곳에 정확히 적어주세요.
+        const bgmList = ['/bgm1.mp3', '/bgm2.mp3', '/bgm3.mp3']; 
+        let currentAudio = null;
+
+        function playRandomBGM() {
+            stopBGM(); // 기존에 재생 중인 소리가 있다면 초기화
+            const randomIndex = Math.floor(Math.random() * bgmList.length);
+            currentAudio = new Audio(bgmList[randomIndex]);
+            // 오디오 재생 (브라우저 정책상 사용자가 화면을 클릭한 이후여야 에러 없이 재생됩니다)
+            currentAudio.play().catch(e => console.log("오디오 재생 권한 에러:", e));
+        }
+
+        function stopBGM() {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+            }
+        }
 
         window.onload = () => {
             const urlParams = new URLSearchParams(window.location.search);
@@ -192,38 +211,37 @@
                 displayText.innerText = `${data.qIndex + 1}번 문제`;
                 timerUI.classList.add('hidden');
                 clearInterval(countdownInterval); 
+                stopBGM(); // 혹시 모를 오디오 중단
             } else if (data.state === 'Q_TEXT') {
                 displayText.innerText = data.questionText;
                 
                 if (data.timerState === 'PREP') {
-                    // [변경] 3초 대기 중에는 타이머 UI를 완전히 숨겨서 글자만 깔끔하게 보입니다.
                     timerUI.classList.add('hidden');
                 }
             } else if (data.state === 'RESULT') {
                 displayText.innerText = "정답 확인!";
                 timerUI.classList.add('hidden');
                 clearInterval(countdownInterval);
+                stopBGM(); // 결과 화면 진입 시 음악 중단
                 renderResults(data.players, resultsView, data.maxTeams);
             }
         });
 
-        // [신규] 서버에서 점수판 새로고침 신호를 보내면 결과창을 다시 그립니다.
         socket.on('updateScores', (players) => {
             const resultsView = document.getElementById('host-results-view');
-            // 정답 확인 화면이 열려있을 때만 다시 그립니다.
             if (!document.getElementById('host-game-view').classList.contains('hidden') && 
                 document.getElementById('host-display-text').innerText === "정답 확인!") {
                 renderResults(players, resultsView, totalTeamsConfig);
             }
         });
 
-        // [변경] 3초 대기가 끝나고 신호가 오면, 이때 타이머 UI가 짠! 하고 나타납니다.
         socket.on('startTimer', (seconds) => {
             const timerUI = document.getElementById('cute-timer-ui');
             const timerText = document.getElementById('cute-timer-text');
             const barFill = document.getElementById('cute-bar-fill');
             
-            timerUI.classList.remove('hidden'); // 드디어 타이머 등장
+            timerUI.classList.remove('hidden'); 
+            playRandomBGM(); // [신규] 타이머 시작과 동시에 랜덤 BGM 재생 🎶
             
             let timeLeft = seconds;
             timerText.innerText = `⏳ 남은 시간: ${timeLeft}초`;
@@ -249,19 +267,18 @@
 
         socket.on('endTimer', () => {
             clearInterval(countdownInterval);
+            stopBGM(); // [신규] 타이머 끝나면 음악도 뚝 멈춤 ⛔
             document.getElementById('cute-timer-text').innerText = "⏰ 입력 시간 종료!";
             document.getElementById('cute-timer-text').classList.remove('shake');
             document.getElementById('cute-bar-fill').style.width = "0%";
         });
 
-        // [신규] 버튼을 누르면 서버에 점수 변경을 요청하는 함수
         function changeScore(type, target, delta) {
             socket.emit('changeScore', { type, target, delta });
         }
 
-        // [변경] 결과창에 점수(팀 총합/개인) 및 +/- 버튼 그리기
         function renderResults(players, container, maxTeams) {
-            container.innerHTML = ""; // 아주 중요! 다시 그릴 때 이전 내용 싹 지우기
+            container.innerHTML = ""; 
             const colors = ['#FFD1DC', '#FFB347', '#AEC6CF', '#77DD77', '#E6E6FA'];
             const answerCounts = {}; 
             const answerColorMap = {}; 
@@ -279,14 +296,12 @@
             for (let i = 1; i <= maxTeams; i++) {
                 const teamPlayers = players.filter(p => p.team == i);
                 
-                // 모둠 총합 점수 계산
                 let teamScore = 0;
                 teamPlayers.forEach(p => teamScore += (p.score || 0));
 
                 const teamDiv = document.createElement('div');
                 teamDiv.className = 'team-box';
                 
-                // 모둠 헤더 (이름 + 총합 점수 + 모둠 점수 버튼)
                 teamDiv.innerHTML = `
                     <div class="team-header">
                         <h3>${i}조 <span style="color:#e91e63; font-size:14px;">(${teamScore}점)</span></h3>
@@ -312,7 +327,6 @@
                         slotDiv.style.backgroundColor = bgColor;
                         slotDiv.style.cssText += borderStyle;
                         
-                        // 개인 슬롯 (이름 + 개인 점수 + 개인 점수 버튼 + 정답)
                         slotDiv.innerHTML = `
                             <div class="ans-name">
                                 <span>${p.name} <span style="color:#e91e63;">${p.score || 0}</span></span>
@@ -364,7 +378,6 @@
                 document.getElementById('submit-status').innerText = "";
                 document.getElementById('player-answer').value = ""; 
             } else if (data.state === 'Q_TEXT_PREP') {
-                // 이 텍스트도 원하시면 더 심플하게 바꿀 수 있습니다. 일단 대기하라는 안내 유지.
                 statusText.innerText = "👀 문제를 읽고 대기하세요!";
                 answerArea.classList.add('hidden');
             } else if (data.state === 'Q_TEXT_INPUT') {
