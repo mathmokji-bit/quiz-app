@@ -9,20 +9,27 @@
         button { padding: 10px 20px; font-size: 16px; margin: 10px; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 5px;}
         input, textarea { padding: 10px; font-size: 16px; margin: 5px; }
         .hidden { display: none !important; }
-        #host-display-text { font-size: 3em; margin: 40px 0; }
         
-        /* 2x2 그리드용 디자인 추가 */
+        /* 문제 글자 크기 대폭 확대 및 줄바꿈 유지 */
+        #host-display-text { font-size: 4.5em; margin: 40px 0 20px 0; word-break: keep-all; font-weight: 900; }
+        
         .team-box { border: 2px solid #333; margin: 10px; padding: 10px; display: inline-block; vertical-align: top; width: 220px; border-radius: 10px; background-color: #fff; }
         .team-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px; }
-        .slot { width: 100%; height: 60px; border: 1px dashed #aaa; border-radius: 5px; display: flex; align-items: center; justify-content: center; background-color: #f9f9f9; flex-direction: column; box-sizing: border-box; padding: 5px; }
-        
-        /* 대기실 참가자 이름 태그 (드래그 가능) */
+        .slot { width: 100%; height: 60px; border: 1px dashed #aaa; border-radius: 5px; display: flex; align-items: center; justify-content: center; flex-direction: column; box-sizing: border-box; padding: 5px; }
         .player-badge { width: 90%; height: 80%; background-color: #2196F3; color: white; display: flex; align-items: center; justify-content: center; border-radius: 4px; cursor: grab; font-weight: bold; font-size: 14px; }
         .player-badge:active { cursor: grabbing; }
-        
-        /* 정답 텍스트 크기 조정 */
         .ans-name { font-size: 11px; color: #555; margin-bottom: 3px; }
         .ans-text { font-size: 14px; font-weight: bold; word-break: keep-all; }
+
+        /* 귀여운 타이머 애니메이션 디자인 */
+        #cute-timer-ui { margin-top: 30px; }
+        #cute-timer-text { font-size: 2em; font-weight: bold; color: #ff9800; margin-bottom: 10px; transition: color 0.3s; }
+        .bar-bg { width: 80%; max-width: 600px; height: 35px; background-color: #eee; border-radius: 20px; margin: 0 auto; overflow: hidden; border: 3px solid #ddd; position: relative; }
+        .bar-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%); transition: width 1s linear, background-color 0.5s; border-radius: 20px; }
+        
+        /* 시간이 얼마 안 남았을 때 덜덜 떨리는 효과 */
+        .shake { animation: shake 0.4s infinite; color: #e53935 !important; }
+        @keyframes shake { 0% { transform: translate(1px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(3px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(3px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(1px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } }
     </style>
 </head>
 <body>
@@ -33,8 +40,6 @@
     </div>
 
     <div id="host-screen" class="hidden">
-        <h2>[출제자 화면]</h2>
-
         <div id="host-setup" style="border: 2px dashed #4CAF50; padding: 20px; margin-bottom: 20px;">
             <h3>⚙️ 퀴즈 설정</h3>
             모둠 개수: <input type="number" id="setup-teams" value="4" min="1" style="width: 60px;"> 개 <br><br>
@@ -53,12 +58,19 @@
         
         <div id="host-game-view" class="hidden">
             <h1 id="host-display-text"></h1>
+            
+            <div id="cute-timer-ui" class="hidden">
+                <div id="cute-timer-text">👀 문제를 확인하세요! (3초 후 시작)</div>
+                <div class="bar-bg">
+                    <div id="cute-bar-fill" class="bar-fill"></div>
+                </div>
+            </div>
+
             <div id="host-results-view"></div>
         </div>
     </div>
 
     <div id="player-screen" class="hidden">
-        <h2>[참가자 화면]</h2>
         <div id="player-lobby">
             <input type="number" id="team-num" placeholder="모둠 번호 (예: 1)"><br>
             <input type="text" id="player-name" placeholder="참가자 이름"><br>
@@ -69,9 +81,9 @@
         <div id="player-game-view" class="hidden">
             <h2 id="player-status-text">호스트의 진행을 기다려주세요...</h2>
             <div id="answer-area" class="hidden">
-                <input type="text" id="player-answer" placeholder="정답을 입력하세요">
-                <button onclick="submitAnswer()">제출</button>
-                <p id="submit-status" style="color: blue;"></p>
+                <input type="text" id="player-answer" placeholder="정답을 입력하세요" style="font-size: 20px; width: 80%;">
+                <br><button onclick="submitAnswer()" style="font-size: 20px; padding: 15px 40px; background-color: #e91e63;">제출하기</button>
+                <p id="submit-status" style="color: blue; font-weight: bold; font-size: 18px;"></p>
             </div>
         </div>
     </div>
@@ -79,13 +91,12 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        let totalTeamsConfig = 4; // 호스트가 설정한 모둠 수 저장용
+        let totalTeamsConfig = 4; 
+        let countdownInterval = null; // 타이머 제어용
 
         window.onload = () => {
             const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('role') === 'player') {
-                showScreen('player-screen');
-            }
+            if (urlParams.get('role') === 'player') showScreen('player-screen');
         };
 
         function showScreen(screenId) {
@@ -104,7 +115,7 @@
             
             document.getElementById('host-setup').classList.add('hidden');
             document.getElementById('host-lobby').classList.remove('hidden');
-            renderLobbyGrid([]); // 빈 2x2 그리드 먼저 그리기
+            renderLobbyGrid([]); 
         }
 
         function nextState() { socket.emit('nextState'); }
@@ -112,54 +123,39 @@
         socket.on('gameCreated', (teams) => {
             totalTeamsConfig = teams;
             document.getElementById('next-btn').classList.remove('hidden');
-            
             const playerUrl = window.location.origin + "?role=player";
             const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(playerUrl)}`;
-            
             document.getElementById('qr-code-display').innerHTML = `
                 <img src="${qrApiUrl}" alt="참가자 접속용 QR코드" style="border: 2px solid #4CAF50; padding: 10px; border-radius: 10px;">
                 <p style="font-size: 14px; color: #666;">수동 접속 주소: <strong>${playerUrl}</strong></p>
             `;
         });
 
-        // 대기실에서 누군가 접속하거나 자리를 바꾸면 전체 그리드를 새로 그립니다.
-        socket.on('updateLobby', (players) => {
-            renderLobbyGrid(players);
-        });
+        socket.on('updateLobby', (players) => { renderLobbyGrid(players); });
 
-        // 2x2 대기실 그리드 그리기 및 드래그 앤 드롭 설정
         function renderLobbyGrid(players) {
             const container = document.getElementById('lobby-grid-container');
             container.innerHTML = "";
-
             for (let i = 1; i <= totalTeamsConfig; i++) {
                 const teamDiv = document.createElement('div');
                 teamDiv.className = 'team-box';
                 teamDiv.innerHTML = `<h3>${i}조</h3>`;
-                
                 const grid = document.createElement('div');
                 grid.className = 'team-grid';
 
                 for (let s = 0; s < 4; s++) {
                     const slotDiv = document.createElement('div');
                     slotDiv.className = 'slot';
-                    slotDiv.dataset.team = i;
-                    slotDiv.dataset.slot = s;
-                    
-                    // 드롭 허용 이벤트
+                    slotDiv.dataset.team = i; slotDiv.dataset.slot = s;
                     slotDiv.ondragover = (e) => e.preventDefault();
                     slotDiv.ondrop = handleDrop;
 
                     const p = players.find(p => p.team == i && p.slot == s);
                     if (p) {
                         const badge = document.createElement('div');
-                        badge.className = 'player-badge';
-                        badge.draggable = true; // 드래그 가능
-                        badge.innerText = p.name;
-                        // 드래그 시작 시 플레이어 ID와 소속 조 기억
+                        badge.className = 'player-badge'; badge.draggable = true; badge.innerText = p.name;
                         badge.ondragstart = (e) => {
-                            e.dataTransfer.setData('playerId', p.id);
-                            e.dataTransfer.setData('team', p.team);
+                            e.dataTransfer.setData('playerId', p.id); e.dataTransfer.setData('team', p.team);
                         };
                         slotDiv.appendChild(badge);
                     } else {
@@ -167,31 +163,19 @@
                     }
                     grid.appendChild(slotDiv);
                 }
-                teamDiv.appendChild(grid);
-                container.appendChild(teamDiv);
+                teamDiv.appendChild(grid); container.appendChild(teamDiv);
             }
         }
 
-        // 드롭 이벤트 처리 함수
         function handleDrop(e) {
             e.preventDefault();
             const playerId = e.dataTransfer.getData('playerId');
             const fromTeam = e.dataTransfer.getData('team');
-            
-            // 드롭된 위치의 slot 요소 찾기
             const targetSlotDiv = e.target.closest('.slot');
             if (!targetSlotDiv) return;
 
-            const targetTeam = targetSlotDiv.dataset.team;
-            const targetSlot = targetSlotDiv.dataset.slot;
-
-            if (fromTeam !== targetTeam) {
-                alert("같은 조 안에서만 자리를 이동할 수 있습니다.");
-                return;
-            }
-
-            // 서버에 자리 변경 요청
-            socket.emit('changePlayerSlot', { playerId, newSlot: parseInt(targetSlot) });
+            if (fromTeam !== targetSlotDiv.dataset.team) return alert("같은 조 안에서만 자리를 이동할 수 있습니다.");
+            socket.emit('changePlayerSlot', { playerId, newSlot: parseInt(targetSlotDiv.dataset.slot) });
         }
 
         socket.on('updateHostScreen', (data) => {
@@ -199,21 +183,68 @@
             document.getElementById('host-game-view').classList.remove('hidden');
             const displayText = document.getElementById('host-display-text');
             const resultsView = document.getElementById('host-results-view');
+            const timerUI = document.getElementById('cute-timer-ui');
             
             resultsView.innerHTML = ""; 
 
             if (data.state === 'Q_NUM') {
                 displayText.innerText = `${data.qIndex + 1}번 문제`;
+                timerUI.classList.add('hidden');
+                clearInterval(countdownInterval); // 타이머 초기화 안전장치
             } else if (data.state === 'Q_TEXT') {
                 displayText.innerText = data.questionText;
+                
+                // [신규] 3초 대기 상태 렌더링
+                if (data.timerState === 'PREP') {
+                    timerUI.classList.remove('hidden');
+                    document.getElementById('cute-timer-text').innerText = "👀 문제를 확인하세요! (3초 후 입력 시작)";
+                    document.getElementById('cute-timer-text').classList.remove('shake');
+                    document.getElementById('cute-bar-fill').style.width = "100%";
+                    document.getElementById('cute-bar-fill').style.background = "#ccc"; // 대기 중엔 회색
+                }
             } else if (data.state === 'RESULT') {
                 displayText.innerText = "정답 확인!";
-                // 정답 화면도 대기실과 똑같은 2x2 레이아웃으로 그립니다.
+                timerUI.classList.add('hidden');
+                clearInterval(countdownInterval);
                 renderResults(data.players, resultsView, data.maxTeams);
             }
         });
 
-        // 2x2 정답 확인 그리드 그리기 (색상 포함)
+        // [신규] 10초 타이머 시작 (서버에서 신호가 옴)
+        socket.on('startTimer', (seconds) => {
+            let timeLeft = seconds;
+            const timerText = document.getElementById('cute-timer-text');
+            const barFill = document.getElementById('cute-bar-fill');
+            
+            timerText.innerText = `⏳ 남은 시간: ${timeLeft}초`;
+            timerText.classList.remove('shake');
+            barFill.style.background = "linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)"; // 예쁜 파란색
+            barFill.style.width = "100%";
+
+            countdownInterval = setInterval(() => {
+                timeLeft--;
+                if (timeLeft > 0) {
+                    timerText.innerText = `⏳ 남은 시간: ${timeLeft}초`;
+                    barFill.style.width = `${(timeLeft / seconds) * 100}%`;
+                    
+                    if (timeLeft <= 3) { // 3초 남으면 색이 붉게 변하고 화면이 덜덜 떨립니다.
+                        timerText.classList.add('shake');
+                        barFill.style.background = "linear-gradient(90deg, #ff416c, #ff4b2b)"; 
+                    }
+                } else {
+                    clearInterval(countdownInterval);
+                }
+            }, 1000);
+        });
+
+        // [신규] 타이머 완전 종료
+        socket.on('endTimer', () => {
+            clearInterval(countdownInterval);
+            document.getElementById('cute-timer-text').innerText = "⏰ 입력 시간 종료!";
+            document.getElementById('cute-timer-text').classList.remove('shake');
+            document.getElementById('cute-bar-fill').style.width = "0%";
+        });
+
         function renderResults(players, container, maxTeams) {
             const colors = ['#FFD1DC', '#FFB347', '#AEC6CF', '#77DD77', '#E6E6FA'];
             const answerCounts = {}; 
@@ -226,26 +257,21 @@
             });
 
             for (const ans in answerCounts) {
-                if (answerCounts[ans] >= 2) {
-                    answerColorMap[ans] = colors[colorIdx % colors.length];
-                    colorIdx++;
-                }
+                if (answerCounts[ans] >= 2) { answerColorMap[ans] = colors[colorIdx % colors.length]; colorIdx++; }
             }
 
-            // 대기실과 동일하게 설정된 모둠 수만큼만 루프를 돕니다.
             for (let i = 1; i <= maxTeams; i++) {
                 const teamDiv = document.createElement('div');
                 teamDiv.className = 'team-box';
                 teamDiv.innerHTML = `<h3>${i}조</h3>`;
-                
                 const grid = document.createElement('div');
                 grid.className = 'team-grid';
 
                 for (let s = 0; s < 4; s++) {
                     const slotDiv = document.createElement('div');
                     slotDiv.className = 'slot';
-
                     const p = players.find(p => p.team == i && p.slot == s);
+                    
                     if (p) {
                         const ans = (p.answer || "").trim();
                         const bgColor = answerColorMap[ans] || 'transparent';
@@ -253,17 +279,13 @@
                         
                         slotDiv.style.backgroundColor = bgColor;
                         slotDiv.style.cssText += borderStyle;
-                        slotDiv.innerHTML = `
-                            <div class="ans-name">${p.name}</div>
-                            <div class="ans-text">${ans || '미제출'}</div>
-                        `;
+                        slotDiv.innerHTML = `<div class="ans-name">${p.name}</div><div class="ans-text">${ans || '미제출'}</div>`;
                     } else {
                         slotDiv.innerHTML = `<span style="color:#eee; font-size:12px;">공석</span>`;
                     }
                     grid.appendChild(slotDiv);
                 }
-                teamDiv.appendChild(grid);
-                container.appendChild(teamDiv);
+                teamDiv.appendChild(grid); container.appendChild(teamDiv);
             }
         }
 
@@ -272,7 +294,6 @@
             const team = document.getElementById('team-num').value;
             const name = document.getElementById('player-name').value;
             if(!team || !name) return alert("모둠 번호와 이름을 모두 입력해주세요!");
-            
             socket.emit('joinGame', { team, name });
         }
 
@@ -281,7 +302,6 @@
         function submitAnswer() {
             const answer = document.getElementById('player-answer').value;
             if(!answer) return alert("정답을 입력해주세요!");
-
             socket.emit('submitAnswer', answer);
             document.getElementById('submit-status').innerText = `"${answer}" 제출 완료!`;
         }
@@ -291,18 +311,28 @@
             document.getElementById('player-game-view').classList.remove('hidden');
         });
 
+        // [신규] 참가자 화면 상태에 따른 입력창 숨김/표시 처리
         socket.on('updatePlayerScreen', (data) => {
             const statusText = document.getElementById('player-status-text');
             const answerArea = document.getElementById('answer-area');
 
             if (data.state === 'Q_NUM') {
-                statusText.innerText = "문제를 확인하세요!";
+                statusText.innerText = "화면을 보고 문제를 확인하세요!";
                 answerArea.classList.add('hidden');
                 document.getElementById('submit-status').innerText = "";
                 document.getElementById('player-answer').value = ""; 
-            } else if (data.state === 'Q_TEXT') {
-                statusText.innerText = "정답을 입력해주세요!";
+            } else if (data.state === 'Q_TEXT_PREP') {
+                // 3초 대기 중에는 아직 못 씁니다.
+                statusText.innerText = "👀 문제를 읽고 준비하세요! (3초 후 입력 시작)";
+                answerArea.classList.add('hidden');
+            } else if (data.state === 'Q_TEXT_INPUT') {
+                // 타이머 시작! 입력창이 짜잔 나타납니다.
+                statusText.innerText = "✍️ 지금 정답을 입력하세요! (10초)";
                 answerArea.classList.remove('hidden'); 
+            } else if (data.state === 'Q_TEXT_END') {
+                // 10초 끝! 입력창이 칼같이 사라집니다.
+                statusText.innerText = "⏰ 입력이 마감되었습니다!";
+                answerArea.classList.add('hidden');
             } else if (data.state === 'RESULT') {
                 statusText.innerText = "화면에서 결과를 확인하세요!";
                 answerArea.classList.add('hidden');
