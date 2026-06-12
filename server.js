@@ -30,7 +30,8 @@ io.on('connection', (socket) => {
         if (!teamPlayers.find(p => p.slot == i)) { availableSlot = i; break; }
       }
 
-      gameRoom.players.push({ id: socket.id, team, slot: availableSlot, name, answer: "" }); 
+      // [신규] 처음 입장할 때 score: 0을 함께 쥐어줍니다.
+      gameRoom.players.push({ id: socket.id, team, slot: availableSlot, name, answer: "", score: 0 }); 
       socket.join('MAIN_ROOM');
       socket.emit('joinSuccess');
       io.to(gameRoom.hostId).emit('updateLobby', gameRoom.players);
@@ -66,7 +67,6 @@ io.on('connection', (socket) => {
     } else if (gameRoom.currentState === 'Q_NUM') {
       gameRoom.currentState = 'Q_TEXT'; 
       
-      // [신규] 1단계: 문제 공개 및 3초 대기 지시
       io.to(gameRoom.hostId).emit('updateHostScreen', {
         state: gameRoom.currentState, qIndex: gameRoom.currentQIndex,
         questionText: gameRoom.questions[gameRoom.currentQIndex], players: gameRoom.players, maxTeams: gameRoom.maxTeams,
@@ -74,13 +74,11 @@ io.on('connection', (socket) => {
       });
       io.to('MAIN_ROOM').emit('updatePlayerScreen', { state: 'Q_TEXT_PREP' });
 
-      // [신규] 2단계: 3초 후 실제 입력 타이머(10초) 가동
       setTimeout(() => {
-        if (gameRoom.currentState !== 'Q_TEXT') return; // 그새 호스트가 버튼을 넘겼으면 취소
+        if (gameRoom.currentState !== 'Q_TEXT') return; 
         io.to(gameRoom.hostId).emit('startTimer', 10);
         io.to('MAIN_ROOM').emit('updatePlayerScreen', { state: 'Q_TEXT_INPUT' });
 
-        // [신규] 3단계: 10초 후 입력 강제 종료
         setTimeout(() => {
           if (gameRoom.currentState !== 'Q_TEXT') return;
           io.to(gameRoom.hostId).emit('endTimer');
@@ -99,11 +97,31 @@ io.on('connection', (socket) => {
   });
 
   socket.on('submitAnswer', (answer) => {
-    if (gameRoom && gameRoom.currentState === 'Q_TEXT') { // 입력 시간(Q_TEXT 상태)에만 답안 인정
+    if (gameRoom && gameRoom.currentState === 'Q_TEXT') { 
       const player = gameRoom.players.find(p => p.id === socket.id);
       if (player) player.answer = answer;
     }
   });
+
+  // [신규] 호스트가 + / - 버튼을 눌렀을 때 점수 처리
+  socket.on('changeScore', (data) => {
+    const { type, target, delta } = data;
+    if (!gameRoom) return;
+
+    if (type === 'player') {
+      // 개인 점수 변경
+      const player = gameRoom.players.find(p => p.id === target);
+      if (player) player.score += delta;
+    } else if (type === 'team') {
+      // 모둠 전체 점수 변경 (속한 모든 플레이어에게 점수 추가/차감)
+      gameRoom.players.forEach(p => {
+        if (p.team == target) p.score += delta;
+      });
+    }
+    // 변경된 점수판을 호스트에게 실시간으로 다시 보냄
+    io.to(gameRoom.hostId).emit('updateScores', gameRoom.players);
+  });
+
 });
 
 const port = process.env.PORT || 3000;
