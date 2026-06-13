@@ -97,16 +97,14 @@
         let totalTeamsConfig = 4; 
         let countdownInterval = null; 
 
-        // [신규] BGM 관련 변수 및 함수
-        // 깃허브 public 폴더에 올린 mp3 파일 이름을 이곳에 정확히 적어주세요.
+        // BGM 관련 변수 및 함수
         const bgmList = ['/bgm1.mp3', '/bgm2.mp3', '/bgm3.mp3']; 
         let currentAudio = null;
 
         function playRandomBGM() {
-            stopBGM(); // 기존에 재생 중인 소리가 있다면 초기화
+            stopBGM(); 
             const randomIndex = Math.floor(Math.random() * bgmList.length);
             currentAudio = new Audio(bgmList[randomIndex]);
-            // 오디오 재생 (브라우저 정책상 사용자가 화면을 클릭한 이후여야 에러 없이 재생됩니다)
             currentAudio.play().catch(e => console.log("오디오 재생 권한 에러:", e));
         }
 
@@ -210,10 +208,16 @@
             if (data.state === 'Q_NUM') {
                 displayText.innerText = `${data.qIndex + 1}번 문제`;
                 timerUI.classList.add('hidden');
+                
+                // [핵심 변경점] 다음 문제로 넘어가면 이전 점수판(결과창)을 즉시 숨깁니다.
+                resultsView.classList.add('hidden');
+                resultsView.innerHTML = ""; 
+                
                 clearInterval(countdownInterval); 
-                stopBGM(); // 혹시 모를 오디오 중단
+                stopBGM(); 
             } else if (data.state === 'Q_TEXT') {
                 displayText.innerText = data.questionText;
+                resultsView.classList.add('hidden'); // 문제 텍스트 화면에서도 점수판은 숨김 유지
                 
                 if (data.timerState === 'PREP') {
                     timerUI.classList.add('hidden');
@@ -221,8 +225,12 @@
             } else if (data.state === 'RESULT') {
                 displayText.innerText = "정답 확인!";
                 timerUI.classList.add('hidden');
+                
+                // [핵심 변경점] 정답 확인 버튼을 눌렀을 때만 점수판을 다시 보여줍니다.
+                resultsView.classList.remove('hidden'); 
+                
                 clearInterval(countdownInterval);
-                stopBGM(); // 결과 화면 진입 시 음악 중단
+                stopBGM(); 
                 renderResults(data.players, resultsView, data.maxTeams);
             }
         });
@@ -241,7 +249,7 @@
             const barFill = document.getElementById('cute-bar-fill');
             
             timerUI.classList.remove('hidden'); 
-            playRandomBGM(); // [신규] 타이머 시작과 동시에 랜덤 BGM 재생 🎶
+            playRandomBGM(); 
             
             let timeLeft = seconds;
             timerText.innerText = `⏳ 남은 시간: ${timeLeft}초`;
@@ -267,7 +275,7 @@
 
         socket.on('endTimer', () => {
             clearInterval(countdownInterval);
-            stopBGM(); // [신규] 타이머 끝나면 음악도 뚝 멈춤 ⛔
+            stopBGM(); 
             document.getElementById('cute-timer-text').innerText = "⏰ 입력 시간 종료!";
             document.getElementById('cute-timer-text').classList.remove('shake');
             document.getElementById('cute-bar-fill').style.width = "0%";
