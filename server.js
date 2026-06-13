@@ -22,6 +22,18 @@ io.on('connection', (socket) => {
   socket.on('joinGame', (data) => {
     const { team, name } = data;
     if (gameRoom) {
+      const existingPlayer = gameRoom.players.find(p => p.team == team && p.name === name);
+
+      if (existingPlayer) {
+        existingPlayer.id = socket.id;
+        socket.join('MAIN_ROOM');
+        socket.emit('joinSuccess');
+        io.to(gameRoom.hostId).emit('updateLobby', gameRoom.players);
+        io.to(gameRoom.hostId).emit('updateScores', gameRoom.players);
+        console.log(`[재연결 성공] ${team}조 ${name} 학생이 기존 자리를 이어받았습니다.`);
+        return; 
+      }
+
       const teamPlayers = gameRoom.players.filter(p => p.team == team);
       if (teamPlayers.length >= 4) return socket.emit('joinError', '해당 모둠은 이미 4명이 꽉 찼습니다!');
 
@@ -30,7 +42,6 @@ io.on('connection', (socket) => {
         if (!teamPlayers.find(p => p.slot == i)) { availableSlot = i; break; }
       }
 
-      // [신규] 처음 입장할 때 score: 0을 함께 쥐어줍니다.
       gameRoom.players.push({ id: socket.id, team, slot: availableSlot, name, answer: "", score: 0 }); 
       socket.join('MAIN_ROOM');
       socket.emit('joinSuccess');
@@ -48,6 +59,19 @@ io.on('connection', (socket) => {
       player.slot = newSlot;
       io.to(gameRoom.hostId).emit('updateLobby', gameRoom.players);
     }
+  });
+
+  // [신규] 호스트가 플레이어를 대기 명단에서 명시적으로 삭제(제외)할 때
+  socket.on('removePlayer', (data) => {
+    const { playerId } = data;
+    if (!gameRoom) return;
+
+    // 해당 플레이어를 명단에서 제거
+    gameRoom.players = gameRoom.players.filter(p => p.id !== playerId);
+    
+    // 갱신된 명단을 다시 호스트에게 전송하여 화면을 새로 그리게 함
+    io.to(gameRoom.hostId).emit('updateLobby', gameRoom.players);
+    console.log(`[플레이어 삭제] ID: ${playerId} 번 학생이 명단에서 제외되었습니다.`);
   });
 
   socket.on('nextState', () => {
@@ -103,25 +127,20 @@ io.on('connection', (socket) => {
     }
   });
 
-  // [신규] 호스트가 + / - 버튼을 눌렀을 때 점수 처리
   socket.on('changeScore', (data) => {
     const { type, target, delta } = data;
     if (!gameRoom) return;
 
     if (type === 'player') {
-      // 개인 점수 변경
       const player = gameRoom.players.find(p => p.id === target);
       if (player) player.score += delta;
     } else if (type === 'team') {
-      // 모둠 전체 점수 변경 (속한 모든 플레이어에게 점수 추가/차감)
       gameRoom.players.forEach(p => {
         if (p.team == target) p.score += delta;
       });
     }
-    // 변경된 점수판을 호스트에게 실시간으로 다시 보냄
     io.to(gameRoom.hostId).emit('updateScores', gameRoom.players);
   });
-
 });
 
 const port = process.env.PORT || 3000;

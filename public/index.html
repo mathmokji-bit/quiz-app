@@ -22,26 +22,20 @@
             animation: cinematicReveal 0.55s cubic-bezier(0.175, 0.885, 0.32, 1.2) forwards;
         }
 
-        /* [신규] NEXT 버튼 3D 볼륨감 및 클릭 애니메이션 디자인 */
         #next-btn {
-            background: linear-gradient(145deg, #ffca28, #ff8f00); /* 입체감 있는 그라데이션 */
-            color: #fff;
-            border: none;
-            border-radius: 12px;
-            padding: 15px 60px;
-            font-size: 26px;
-            font-weight: 900;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
-            box-shadow: 0 8px 0 #c56000, 0 15px 20px rgba(0,0,0,0.3); /* 아래쪽 두꺼운 그림자 */
-            cursor: pointer;
-            transition: all 0.1s ease;
-            margin: 20px auto;
-            letter-spacing: 2px;
+            background: linear-gradient(145deg, #ffca28, #ff8f00); 
+            color: #fff; border: none; border-radius: 12px; padding: 15px 60px; font-size: 26px; font-weight: 900;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2); box-shadow: 0 8px 0 #c56000, 0 15px 20px rgba(0,0,0,0.3);
+            cursor: pointer; transition: all 0.1s ease; margin: 20px auto; letter-spacing: 2px;
         }
-        /* 버튼을 클릭할 때 실제로 눌리는 듯한 효과 */
-        #next-btn:active {
-            transform: translateY(8px);
-            box-shadow: 0 0 0 #c56000, 0 5px 10px rgba(0,0,0,0.3);
+        #next-btn:active { transform: translateY(8px); box-shadow: 0 0 0 #c56000, 0 5px 10px rgba(0,0,0,0.3); }
+
+        /* [신규] 대기실 휴지통 드롭존 디자인 */
+        #trash-can {
+            border: 2px dashed #e53935; background-color: #ffebee; color: #e53935;
+            padding: 15px; margin: 20px auto; width: 320px; border-radius: 10px;
+            font-weight: bold; font-size: 18px; transition: all 0.2s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
 
         .team-box { border: 2px solid #333; margin: 10px; padding: 10px; display: inline-block; vertical-align: top; width: 240px; border-radius: 10px; background-color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -87,6 +81,14 @@
 
         <div id="host-lobby" class="hidden">
             <div id="qr-code-display" style="margin: 20px 0;"></div>
+            
+            <div id="trash-can" 
+                 ondragover="event.preventDefault(); this.style.backgroundColor='#ffcdd2';" 
+                 ondragleave="this.style.backgroundColor='#ffebee';" 
+                 ondrop="handleTrashDrop(event); this.style.backgroundColor='#ffebee';">
+                🗑️여기에 이름표를 던져서 명단 삭제
+            </div>
+
             <h3>👥 참가자 대기 명단 (이름을 드래그해서 자리를 바꿀 수 있습니다)</h3>
             <div id="lobby-grid-container"></div>
         </div>
@@ -128,6 +130,7 @@
         const socket = io();
         let totalTeamsConfig = 4; 
         let countdownInterval = null; 
+        let clientPlayers = []; // [신규] 삭제 시 어떤 학생 이름을 지우는지 찾기 위한 로컬 저장 공간
 
         // 오디오 관련 설정
         const bgmList = ['/bgm1.mp3', '/bgm2.mp3', '/bgm3.mp3']; 
@@ -188,7 +191,10 @@
             `;
         });
 
-        socket.on('updateLobby', (players) => { renderLobbyGrid(players); });
+        socket.on('updateLobby', (players) => { 
+            clientPlayers = players; // [신규] 이름 대조용으로 플레이어 리스트 캐싱
+            renderLobbyGrid(players); 
+        });
 
         function renderLobbyGrid(players) {
             const container = document.getElementById('lobby-grid-container');
@@ -235,6 +241,21 @@
             socket.emit('changePlayerSlot', { playerId, newSlot: parseInt(targetSlotDiv.dataset.slot) });
         }
 
+        // [신규] 휴지통에 떨어졌을 때의 이벤트 처리 함수
+        function handleTrashDrop(e) {
+            e.preventDefault();
+            const playerId = e.dataTransfer.getData('playerId');
+            
+            // 캐싱된 데이터에서 매칭되는 학생 이름 찾기
+            const player = clientPlayers.find(p => p.id === playerId);
+            if (!player) return;
+
+            // 실수를 방지하기 위한 브라우저 기본 확인 상자 활성화
+            if (confirm(`⚠️ [${player.team}조 ${player.name}] 학생을 대기 명단에서 정말 제외하시겠습니까?`)) {
+                socket.emit('removePlayer', { playerId });
+            }
+        }
+
         socket.on('updateHostScreen', (data) => {
             document.getElementById('host-lobby').classList.add('hidden');
             document.getElementById('host-game-view').classList.remove('hidden');
@@ -249,7 +270,6 @@
                 resultsView.innerHTML = ""; 
                 clearInterval(countdownInterval); 
                 
-                // [변경] 'X번 문제'에서는 음악을 무조건 중단하여 정적을 유지합니다.
                 stopBGM(); 
                 triggerRevealAnimation();
 
@@ -259,7 +279,6 @@
                 
                 if (data.timerState === 'PREP') {
                     timerUI.classList.add('hidden');
-                    // [변경] 진짜 문제가 공개되는 바로 이 시점에 BGM을 터뜨립니다!
                     playRandomBGM();
                     triggerRevealAnimation();
                 }
