@@ -22,6 +22,28 @@
             animation: cinematicReveal 0.55s cubic-bezier(0.175, 0.885, 0.32, 1.2) forwards;
         }
 
+        /* [신규] NEXT 버튼 3D 볼륨감 및 클릭 애니메이션 디자인 */
+        #next-btn {
+            background: linear-gradient(145deg, #ffca28, #ff8f00); /* 입체감 있는 그라데이션 */
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            padding: 15px 60px;
+            font-size: 26px;
+            font-weight: 900;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            box-shadow: 0 8px 0 #c56000, 0 15px 20px rgba(0,0,0,0.3); /* 아래쪽 두꺼운 그림자 */
+            cursor: pointer;
+            transition: all 0.1s ease;
+            margin: 20px auto;
+            letter-spacing: 2px;
+        }
+        /* 버튼을 클릭할 때 실제로 눌리는 듯한 효과 */
+        #next-btn:active {
+            transform: translateY(8px);
+            box-shadow: 0 0 0 #c56000, 0 5px 10px rgba(0,0,0,0.3);
+        }
+
         .team-box { border: 2px solid #333; margin: 10px; padding: 10px; display: inline-block; vertical-align: top; width: 240px; border-radius: 10px; background-color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .team-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px; }
         .slot { width: 100%; height: 65px; border: 1px dashed #aaa; border-radius: 5px; display: flex; align-items: center; justify-content: center; flex-direction: column; box-sizing: border-box; padding: 5px; background-color: #fafafa; }
@@ -61,7 +83,7 @@
             <button onclick="createCustomGame()" style="background-color: #2196F3;">설정 완료 및 방 열기</button>
         </div>
 
-        <button id="next-btn" onclick="nextState()" class="hidden" style="background-color: #ff9800; padding: 15px 30px; font-weight: bold; font-size: 18px;">게임 시작 / 다음 화면 ➡️</button>
+        <button id="next-btn" onclick="nextState()" class="hidden">NEXT</button>
 
         <div id="host-lobby" class="hidden">
             <div id="qr-code-display" style="margin: 20px 0;"></div>
@@ -115,7 +137,7 @@
             stopBGM(); 
             const randomIndex = Math.floor(Math.random() * bgmList.length);
             currentAudio = new Audio(bgmList[randomIndex]);
-            currentAudio.loop = true; // [추가] 선생님이 대기하실 때를 대비해 BGM 반복 재생
+            currentAudio.loop = true; 
             currentAudio.play().catch(e => console.log("오디오 재생 권한 에러:", e));
         }
 
@@ -227,8 +249,8 @@
                 resultsView.innerHTML = ""; 
                 clearInterval(countdownInterval); 
                 
-                // [변경] BGM 시작 시점을 'X번 문제' 등장 시로 변경
-                playRandomBGM(); 
+                // [변경] 'X번 문제'에서는 음악을 무조건 중단하여 정적을 유지합니다.
+                stopBGM(); 
                 triggerRevealAnimation();
 
             } else if (data.state === 'Q_TEXT') {
@@ -237,7 +259,8 @@
                 
                 if (data.timerState === 'PREP') {
                     timerUI.classList.add('hidden');
-                    // 효과음 없이 글자 쾅! 애니메이션만 유지
+                    // [변경] 진짜 문제가 공개되는 바로 이 시점에 BGM을 터뜨립니다!
+                    playRandomBGM();
                     triggerRevealAnimation();
                 }
             } else if (data.state === 'RESULT') {
@@ -267,7 +290,6 @@
             const barFill = document.getElementById('cute-bar-fill');
             
             timerUI.classList.remove('hidden'); 
-            // [변경] 이미 BGM이 재생 중이므로 여기서 음악을 다시 틀지 않습니다.
             
             let timeLeft = seconds;
             timerText.innerText = `⏳ 남은 시간: ${timeLeft}초`;
